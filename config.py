@@ -55,6 +55,16 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "github_pages": {
         "output_dir": "docs",
     },
+    "retirement": {
+        "enabled": True,
+        "days_by_rating": {
+            "1": 30,
+            "2": 60,
+            "3": 180,
+            "4": 365,
+            "5": 365,
+        },
+    },
 }
 
 

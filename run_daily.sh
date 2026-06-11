@@ -102,6 +102,9 @@ PROMPT
   # Phase 5b: Sync metadata from notes (fallback if merge skipped or partial)
   python3 sync_from_notes.py
 
+  # Phase 5c: Retire old low-rated papers
+  python3 retire_papers.py
+
   # Phase 6: Rebuild page
   python3 build_page.py
 
@@ -110,7 +113,7 @@ PROMPT
 
   # Phase 8: Commit updates to git (notes + docs site for GitHub Pages)
   if git rev-parse --git-dir >/dev/null 2>&1; then
-    git add docs/ notes/
+    git add -A docs/ notes/
     if git diff --staged --quiet; then
       echo "No changes to commit."
     else

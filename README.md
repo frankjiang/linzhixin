@@ -20,6 +20,7 @@
 - **查漏补缺**：缺笔记、缺评分、缺 TL;DR 的论文会自动重新进入处理队列
 - **钉钉推送**：本次批次中 ≥4 星的论文，推送 Markdown 摘要（含「快速阅读」深链接）
 - **深链接**：`?paper=2606.12403v1` 可直达某篇论文并展开详情
+- **清退机制**：按评分与论文日期自动淘汰旧论文（1 星 >1 月、2 星 >2 月、3 星 >6 月、4–5 星 >1 年）
 
 ## 架构
 
@@ -32,6 +33,7 @@ run_daily.sh
   ├─ codex exec             # Agent 读论文、写笔记
   ├─ merge_results.py       # 合并评分到 papers.json
   ├─ sync_from_notes.py     # 从笔记回填元数据
+  ├─ retire_papers.py       # 按评分清退过期论文
   ├─ build_page.py          # 构建静态页面
   └─ notify_dingtalk.py     # 钉钉推送高星论文
 ```
