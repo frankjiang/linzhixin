@@ -1,0 +1,25 @@
+# Local configuration (contains secrets)
+config.json
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# macOS / editor
+.DS_Store
+._*
+*.swp
+*.swo
+.idea/
+.vscode/
+
+# Runtime / generated
+logs/
+tmp/
+data/
+
+# Large assets (optional — uncomment if PDFs should not be tracked)
+# data/world_model/pdfs/

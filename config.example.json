@@ -1,0 +1,43 @@
+{
+  "proxy": {
+    "http": "http://127.0.0.1:7892",
+    "https": "http://127.0.0.1:7892",
+    "all": "socks5://127.0.0.1:7892",
+    "no_proxy": "localhost,127.0.0.1,::1"
+  },
+  "paths": {
+    "home": "/home/frank.jf",
+    "project_root": "/home/frank.jf/git/paper-survey",
+    "codex_bin_dirs": [
+      "/home/frank.jf/.local/bin",
+      "/home/frank.jf/anaconda3/bin",
+      "/home/frank.jf/.nvm/versions/node/v18.20.8/bin"
+    ]
+  },
+  "dingtalk": {
+    "enabled": true,
+    "webhook": "https://oapi.dingtalk.com/robot/send?access_token=YOUR_ACCESS_TOKEN",
+    "secret": "YOUR_DINGTALK_SECRET",
+    "min_rating": 4,
+    "survey_url": "http://127.0.0.1:7777"
+  },
+  "server": {
+    "host": "0.0.0.0",
+    "address": "30.79.84.80",
+    "port": 7777,
+    "static_dir": "docs"
+  },
+  "topic": {
+    "name": "world_model",
+    "display_name": "World Model"
+  },
+  "site": {
+    "name": "林知新",
+    "tagline": "一位帮你读 Paper 的 Agent.",
+    "github_url": "https://github.com/YOUR_USERNAME/paper-survey",
+    "public_url": "https://YOUR_USERNAME.github.io/paper-survey/"
+  },
+  "github_pages": {
+    "output_dir": "docs"
+  }
+}
