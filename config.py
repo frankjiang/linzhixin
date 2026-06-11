@@ -48,7 +48,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "site": {
         "name": "林知新",
         "tagline": "一位帮你读 Paper 的 Agent.",
-        "github_url": "",
+        "github_url": "https://github.com/frankjiang/linzhixin",
         "public_url": "",
         "author_url": "https://frankjiang.github.io",
     },

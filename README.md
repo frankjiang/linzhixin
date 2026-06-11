@@ -6,7 +6,9 @@
 
 当前追踪方向：**World Model**（视频世界模型、3D 世界模型、隐式世界模型等）。
 
-在线演示：将 `docs/` 部署到 GitHub Pages 后，访问 `https://<username>.github.io/<repo>/`。
+在线演示：[https://frankjiang.github.io/linzhixin/](https://frankjiang.github.io/linzhixin/)
+
+项目地址：[https://github.com/frankjiang/linzhixin](https://github.com/frankjiang/linzhixin)
 
 ## 功能
 
@@ -91,7 +93,7 @@ python3 server.py
    - Folder: **`/docs`**
 4. 在 `config.json` 中设置 `site.public_url` 为 Pages 地址，例如：
    ```json
-   "public_url": "https://yourname.github.io/paper-survey/"
+   "public_url": "https://frankjiang.github.io/linzhixin/"
    ```
 5. 钉钉「快速阅读」链接将指向 `?paper=<arxiv_id>` 深链接
 
@@ -127,4 +129,4 @@ python3 server.py
 
 ## License
 
-MIT
+本项目采用 [Apache License 2.0](LICENSE) 开源协议。

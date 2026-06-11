@@ -161,6 +161,19 @@ a:hover {{ text-decoration: underline; color: var(--accent-hover); }}
   color: var(--text2);
   margin-top: 2px;
 }}
+.brand-text .project-link {{
+  font-size: 0.8125rem;
+  margin-top: 4px;
+}}
+.brand-text .project-link a {{
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: 500;
+}}
+.brand-text .project-link a:hover {{
+  text-decoration: underline;
+  color: var(--accent-hover);
+}}
 .brand-text .meta {{
   font-size: 0.75rem;
   color: var(--text2);
@@ -523,6 +536,7 @@ a:hover {{ text-decoration: underline; color: var(--accent-hover); }}
         <div class="brand-text">
           <h1>{site_name}</h1>
           <div class="tagline">{site_tagline}</div>
+          <div class="project-link"><a href="{github_url}" target="_blank" rel="noopener">搭建你自己的林知新</a></div>
           <div class="meta">
             追踪方向 <strong>{topic_display}</strong>
             &middot; 更新于 {now}
@@ -852,7 +866,7 @@ def main():
         site_name=site.get("name", "林知新"),
         site_tagline=site.get("tagline", "一位帮你读 Paper 的 Agent."),
         topic_display=topic_cfg.get("display_name", "World Model"),
-        github_url=site.get("github_url", ""),
+        github_url=site.get("github_url", "https://github.com/frankjiang/linzhixin"),
         author_url=site.get("author_url", "https://frankjiang.github.io"),
     )
 
