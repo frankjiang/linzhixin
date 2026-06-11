@@ -50,6 +50,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "tagline": "一位帮你读 Paper 的 Agent.",
         "github_url": "",
         "public_url": "",
+        "author_url": "https://frankjiang.github.io",
     },
     "github_pages": {
         "output_dir": "docs",

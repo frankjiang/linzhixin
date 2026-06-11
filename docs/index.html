@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="description" content="林知新 — 一位帮你读 Paper 的 Agent.">
 <title>林知新 · World Model</title>
+<link rel="icon" href="imgs/logo.png" type="image/png">
+<link rel="apple-touch-icon" href="imgs/logo.png">
 <style>
 :root {
   --bg: #ffffff;
@@ -77,19 +79,15 @@ a:hover { text-decoration: underline; color: var(--accent-hover); }
   gap: 12px;
   min-width: 0;
 }
-.brand-mark {
+.brand-logo {
   width: 40px;
   height: 40px;
   border-radius: 8px;
-  background: var(--accent-subtle);
-  color: var(--accent);
   border: 1px solid var(--border);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 1.1rem;
-  font-weight: 700;
+  background: var(--card-bg);
+  object-fit: contain;
   flex-shrink: 0;
+  display: block;
 }
 .brand-text h1 {
   font-size: 1.25rem;
@@ -444,6 +442,8 @@ a:hover { text-decoration: underline; color: var(--accent-hover); }
   text-align: center;
 }
 .site-footer strong { color: var(--text); }
+.site-footer a { color: var(--accent); text-decoration: none; }
+.site-footer a:hover { text-decoration: underline; }
 @media (max-width: 768px) {
   .brand-row { flex-direction: column; }
   .header-actions { align-self: flex-end; }
@@ -458,13 +458,13 @@ a:hover { text-decoration: underline; color: var(--accent-hover); }
   <div class="site-header-inner">
     <div class="brand-row">
       <div class="brand">
-        <div class="brand-mark" aria-hidden="true">知</div>
+        <img class="brand-logo" src="imgs/logo.png" alt="林知新">
         <div class="brand-text">
           <h1>林知新</h1>
           <div class="tagline">一位帮你读 Paper 的 Agent.</div>
           <div class="meta">
             追踪方向 <strong>World Model</strong>
-            &middot; 更新于 2026-06-12 03:37
+            &middot; 更新于 2026-06-12 03:49
             &middot; <span id="paperCount">0</span> 篇论文
           </div>
         </div>
@@ -516,7 +516,8 @@ a:hover { text-decoration: underline; color: var(--accent-hover); }
 </main>
 
 <footer class="site-footer">
-  <strong>林知新</strong> &middot; 数据来自 arXiv &middot; 由 Agent 每日自动更新
+  <strong>林知新</strong> &middot; 数据来自 arXiv &middot; 由 Agent 每日自动更新<br>
+  <a href="https://frankjiang.github.io" target="_blank" rel="noopener">frankjiang.github.io</a>
 </footer>
 
 <script>

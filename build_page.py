@@ -2,6 +2,7 @@
 """Build a self-contained index.html from paper data."""
 
 import json
+import shutil
 from datetime import datetime
 from pathlib import Path
 
@@ -10,6 +11,7 @@ from config import load_config, topic_name
 BASE_DIR = Path(__file__).parent
 DATA_DIR = BASE_DIR / "data"
 NOTES_DIR = BASE_DIR / "notes"
+LOGO_SRC = BASE_DIR / "imgs" / "logo.png"
 
 
 def load_papers(topic: str) -> list[dict]:
@@ -39,6 +41,7 @@ def build_html(
     site_tagline: str,
     topic_display: str,
     github_url: str,
+    author_url: str,
 ) -> str:
     papers_json = json.dumps(papers, ensure_ascii=False)
     notes_json = json.dumps(notes, ensure_ascii=False)
@@ -63,6 +66,8 @@ def build_html(
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="description" content="{site_name} — {site_tagline}">
 <title>{site_name} · {topic_display}</title>
+<link rel="icon" href="imgs/logo.png" type="image/png">
+<link rel="apple-touch-icon" href="imgs/logo.png">
 <style>
 :root {{
   --bg: #ffffff;
@@ -135,19 +140,15 @@ a:hover {{ text-decoration: underline; color: var(--accent-hover); }}
   gap: 12px;
   min-width: 0;
 }}
-.brand-mark {{
+.brand-logo {{
   width: 40px;
   height: 40px;
   border-radius: 8px;
-  background: var(--accent-subtle);
-  color: var(--accent);
   border: 1px solid var(--border);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 1.1rem;
-  font-weight: 700;
+  background: var(--card-bg);
+  object-fit: contain;
   flex-shrink: 0;
+  display: block;
 }}
 .brand-text h1 {{
   font-size: 1.25rem;
@@ -502,6 +503,8 @@ a:hover {{ text-decoration: underline; color: var(--accent-hover); }}
   text-align: center;
 }}
 .site-footer strong {{ color: var(--text); }}
+.site-footer a {{ color: var(--accent); text-decoration: none; }}
+.site-footer a:hover {{ text-decoration: underline; }}
 @media (max-width: 768px) {{
   .brand-row {{ flex-direction: column; }}
   .header-actions {{ align-self: flex-end; }}
@@ -516,7 +519,7 @@ a:hover {{ text-decoration: underline; color: var(--accent-hover); }}
   <div class="site-header-inner">
     <div class="brand-row">
       <div class="brand">
-        <div class="brand-mark" aria-hidden="true">知</div>
+        <img class="brand-logo" src="imgs/logo.png" alt="{site_name}">
         <div class="brand-text">
           <h1>{site_name}</h1>
           <div class="tagline">{site_tagline}</div>
@@ -574,7 +577,8 @@ a:hover {{ text-decoration: underline; color: var(--accent-hover); }}
 </main>
 
 <footer class="site-footer">
-  <strong>{site_name}</strong> &middot; 数据来自 arXiv &middot; 由 Agent 每日自动更新
+  <strong>{site_name}</strong> &middot; 数据来自 arXiv &middot; 由 Agent 每日自动更新<br>
+  <a href="{author_url}" target="_blank" rel="noopener">frankjiang.github.io</a>
 </footer>
 
 <script>
@@ -812,9 +816,19 @@ openPaperFromUrl();
 </html>'''
 
 
+def copy_assets(output_dir: str) -> None:
+    if not LOGO_SRC.exists():
+        print(f"Warning: logo not found at {LOGO_SRC}")
+        return
+    imgs_out = BASE_DIR / output_dir / "imgs"
+    imgs_out.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(LOGO_SRC, imgs_out / "logo.png")
+
+
 def write_output(html: str, output_dir: str) -> Path:
     out_dir = BASE_DIR / output_dir
     out_dir.mkdir(parents=True, exist_ok=True)
+    copy_assets(output_dir)
     out_path = out_dir / "index.html"
     out_path.write_text(html, encoding="utf-8")
     (out_dir / ".nojekyll").touch()
@@ -839,6 +853,7 @@ def main():
         site_tagline=site.get("tagline", "一位帮你读 Paper 的 Agent."),
         topic_display=topic_cfg.get("display_name", "World Model"),
         github_url=site.get("github_url", ""),
+        author_url=site.get("author_url", "https://frankjiang.github.io"),
     )
 
     output_dir = gh_pages.get("output_dir", "docs")
