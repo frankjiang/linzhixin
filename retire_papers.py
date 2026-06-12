@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Retire old papers by rating-based retention policy."""
+"""Retire old papers by rating-based retention policy.
+
+Soft retirement: remove from papers.json/csv so they no longer appear on the
+site. Notes and PDFs on disk are preserved.
+"""
 
 from __future__ import annotations
 
@@ -12,7 +16,6 @@ from config import load_config, topic_name
 
 BASE_DIR = Path(__file__).parent
 DATA_DIR = BASE_DIR / "data"
-NOTES_DIR = BASE_DIR / "notes"
 
 DEFAULT_RETENTION_DAYS = {
     1: 30,
@@ -21,10 +24,6 @@ DEFAULT_RETENTION_DAYS = {
     4: 365,
     5: 365,
 }
-
-
-def note_stem(arxiv_id: str) -> str:
-    return arxiv_id.replace("/", "_").replace(".", "_")
 
 
 def retention_days(cfg: dict) -> dict[int, int]:
@@ -67,17 +66,6 @@ def save_csv(papers: list[dict], csv_path: Path) -> None:
             writer.writerow(row)
 
 
-def retire_paper_files(topic: str, arxiv_id: str) -> list[str]:
-    removed: list[str] = []
-    note_path = NOTES_DIR / topic / f"{note_stem(arxiv_id)}.md"
-    pdf_path = DATA_DIR / topic / "pdfs" / f"{note_stem(arxiv_id)}.pdf"
-    for path in (note_path, pdf_path):
-        if path.exists():
-            path.unlink()
-            removed.append(str(path))
-    return removed
-
-
 def main():
     cfg = load_config()
     retirement_cfg = cfg.get("retirement", {})
@@ -115,18 +103,16 @@ def main():
         aid = paper["arxiv_id"]
         rating = int(paper.get("rating") or 0)
         age = paper_age_days(paper, today)
-        files = retire_paper_files(topic, aid)
-        file_msg = f", removed {len(files)} file(s)" if files else ""
         print(
             f"  Retired: {aid} (rating={rating}, age={age}d, "
-            f"limit={policy.get(rating)}d){file_msg}"
+            f"limit={policy.get(rating)}d, notes kept)"
         )
 
     with open(json_path, "w", encoding="utf-8") as f:
         json.dump(kept, f, ensure_ascii=False, indent=2)
     save_csv(kept, csv_path)
 
-    print(f"Retired {len(retired)} paper(s), {len(kept)} remaining.")
+    print(f"Retired {len(retired)} paper(s), {len(kept)} remaining (notes preserved).")
 
 
 if __name__ == "__main__":

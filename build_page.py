@@ -857,8 +857,10 @@ def main():
 
     topic = topic_name(cfg)
     papers = load_papers(topic)
-    notes = load_notes(topic)
-    print(f"Loaded {len(papers)} papers, {len(notes)} notes")
+    all_notes = load_notes(topic)
+    active_ids = {p["arxiv_id"] for p in papers}
+    notes = {aid: all_notes[aid] for aid in active_ids if aid in all_notes}
+    print(f"Loaded {len(papers)} papers, {len(notes)} notes for page")
 
     html = build_html(
         papers,
