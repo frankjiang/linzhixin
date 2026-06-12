@@ -50,5 +50,10 @@
       "4": 365,
       "5": 365
     }
+  },
+  "git": {
+    "auto_commit": true,
+    "auto_push": true,
+    "push_remote": "origin"
   }
 }

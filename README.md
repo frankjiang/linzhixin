@@ -79,7 +79,7 @@ python3 server.py
 0 0 * * * /path/to/paper-survey/run_daily.sh
 ```
 
-每次日报完成后，`run_daily.sh` 会自动将 `docs/`、`notes/` 的变更提交到 git（commit message 为 `daily update: YYYY-MM-DD`）。`config.json`、`data/`、`logs/` 不会入库。如需同步到 GitHub Pages，请另行配置 `git push`（例如在 cron 末尾追加推送，或由 CI 触发）。
+每次日报完成后，`run_daily.sh` 会自动将 `docs/`、`notes/` 的变更提交并 **push** 到远程（默认 `origin`，可在 `config.json` 的 `git` 段关闭）。`config.json`、`data/`、`logs/` 不会入库。修改 `build_page.py` 等构建脚本后，需重新运行 `python3 build_page.py` 并提交 `docs/`，日报流程会在 Phase 6 自动重建页面。
 
 ## GitHub Pages 部署
 
@@ -91,7 +91,7 @@ python3 server.py
 2. 将 `docs/` 目录提交到仓库
 3. 在 GitHub 仓库 **Settings → Pages** 中：
    - Source: **Deploy from a branch**
-   - Branch: `main`（或你的默认分支）
+   - Branch: `master`（或你的默认分支）
    - Folder: **`/docs`**
 4. 在 `config.json` 中设置 `site.public_url` 为 Pages 地址，例如：
    ```json

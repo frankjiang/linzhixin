@@ -65,6 +65,11 @@ DEFAULT_CONFIG: dict[str, Any] = {
             "5": 365,
         },
     },
+    "git": {
+        "auto_commit": True,
+        "auto_push": True,
+        "push_remote": "origin",
+    },
 }
 
 
