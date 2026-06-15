@@ -68,6 +68,7 @@ def build_html(
 <title>{site_name} · {topic_display}</title>
 <link rel="icon" href="imgs/logo.png" type="image/png">
 <link rel="apple-touch-icon" href="imgs/logo.png">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" crossorigin="anonymous">
 <style>
 :root {{
   --bg: #ffffff;
@@ -340,16 +341,38 @@ a:hover {{ text-decoration: underline; color: var(--accent-hover); }}
 }}
 .rating-badge {{
   flex-shrink: 0;
-  min-width: 28px;
-  height: 22px;
-  padding: 0 6px;
-  border-radius: 2em;
+  width: 2.75rem;
+  min-height: 2rem;
+  padding: 6px 8px;
+  border-radius: 8px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   font-size: 0.7rem;
   font-weight: 600;
   border: 1px solid transparent;
+  line-height: 1;
+}}
+.rating-stars {{
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  width: 100%;
+}}
+.rating-stars-inline {{
+  flex-direction: row;
+  font-size: 0.6rem;
+  letter-spacing: -0.04em;
+}}
+.rating-stars-row {{
+  display: flex;
+  justify-content: center;
+  gap: 0;
+  font-size: 0.6rem;
+  letter-spacing: -0.04em;
+  line-height: 1;
 }}
 .rating-0 {{ background: var(--tag-bg); color: var(--text2); border-color: var(--border); }}
 .rating-1 {{ background: #f6f8fa; color: #656d76; border-color: #d0d7de; }}
@@ -518,6 +541,18 @@ a:hover {{ text-decoration: underline; color: var(--accent-hover); }}
 .site-footer strong {{ color: var(--text); }}
 .site-footer a {{ color: var(--accent); text-decoration: none; }}
 .site-footer a:hover {{ text-decoration: underline; }}
+.paper-title .katex {{ font-size: 1em; color: inherit; }}
+.paper-tldr .katex, .paper-abstract-preview .katex, .paper-abstract .katex {{
+  font-size: 0.95em;
+}}
+.paper-note .katex {{ font-size: 0.95em; }}
+[data-theme="dark"] .katex {{ color: var(--text); }}
+[data-theme="dark"] .katex .mord, [data-theme="dark"] .katex .mop,
+[data-theme="dark"] .katex .mbin, [data-theme="dark"] .katex .mrel,
+[data-theme="dark"] .katex .mopen, [data-theme="dark"] .katex .mclose,
+[data-theme="dark"] .katex .mpunct, [data-theme="dark"] .katex .minner {{
+  color: inherit;
+}}
 @media (max-width: 768px) {{
   .brand-row {{ flex-direction: column; }}
   .header-actions {{ align-self: flex-end; }}
@@ -595,6 +630,8 @@ a:hover {{ text-decoration: underline; color: var(--accent-hover); }}
   <a href="{author_url}" target="_blank" rel="noopener">frankjiang.github.io</a>
 </footer>
 
+<script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js" crossorigin="anonymous"></script>
 <script>
 const PAPERS = {papers_json};
 const NOTES = {notes_json};
@@ -689,12 +726,21 @@ function openPaperFromUrl() {{
 
 function getStars(rating) {{
   if (!rating) return '-';
-  return '\\u2B50'.repeat(rating);
+  const star = '\\u2B50';
+  if (rating <= 2) {{
+    return `<span class="rating-stars rating-stars-inline">${{star.repeat(rating)}}</span>`;
+  }}
+  const bottom = 2;
+  const top = rating - bottom;
+  return `<span class="rating-stars">` +
+    `<span class="rating-stars-row">${{star.repeat(top)}}</span>` +
+    `<span class="rating-stars-row">${{star.repeat(bottom)}}</span>` +
+    `</span>`;
 }}
 
 function mdToHtml(md) {{
   if (!md) return '';
-  let h = md
+  let h = esc(md)
     .replace(/^### (.+)$/gm, '<h3>$1</h3>')
     .replace(/^## (.+)$/gm, '<h2>$1</h2>')
     .replace(/^# (.+)$/gm, '<h1>$1</h1>')
@@ -801,6 +847,7 @@ function renderPapers() {{
       </div>
     </div>`;
   }}).join('');
+  typesetLatex(list);
 }}
 
 function esc(s) {{
@@ -808,6 +855,20 @@ function esc(s) {{
   const d = document.createElement('div');
   d.textContent = s;
   return d.innerHTML;
+}}
+
+function typesetLatex(root) {{
+  if (typeof renderMathInElement !== 'function') return;
+  renderMathInElement(root, {{
+    delimiters: [
+      {{left: '$$', right: '$$', display: true}},
+      {{left: '$', right: '$', display: false}},
+      {{left: '\\\\(', right: '\\\\)', display: false}},
+      {{left: '\\\\[', right: '\\\\]', display: true}},
+    ],
+    throwOnError: false,
+    errorColor: '#cf222e',
+  }});
 }}
 
 document.addEventListener('keydown', e => {{
