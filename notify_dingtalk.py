@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import argparse
 import base64
 import hashlib
 import hmac
@@ -17,6 +18,7 @@ from config import BASE_DIR, load_config, topic_name
 
 DATA_DIR = BASE_DIR / "data"
 DINGTALK_DEFAULT_BASE = "https://oapi.dingtalk.com/robot/send"
+MAX_MESSAGE_CHARS = 18000
 
 RELEVANCE_LABELS = {
     3: "Core",
@@ -114,46 +116,143 @@ def _format_paper_block(paper: dict, index: int, survey_url: str) -> str:
     )
 
 
-def build_message(highlights: list[dict], survey_url: str, min_rating: int) -> tuple[str, str]:
+def build_message(
+    highlights: list[dict],
+    survey_url: str,
+    min_rating: int,
+    *,
+    catch_up: bool = False,
+    start_index: int = 1,
+) -> tuple[str, str]:
     today = datetime.now().strftime("%Y-%m-%d")
     count = len(highlights)
-    title = f"Paper Survey · {count} 篇 {min_rating}⭐+ 论文"
+    suffix = "（补发）" if catch_up else ""
+    title = f"Paper Survey · {count} 篇 {min_rating}⭐+ 论文{suffix}"
 
-    header = (
-        f"## 📚 World Model 日报\n\n"
-        f"**{today}** · 本次发现 **{count}** 篇高价值论文（创新度 ≥ {min_rating}⭐）"
-    )
-    blocks = [_format_paper_block(p, i, survey_url) for i, p in enumerate(highlights, 1)]
+    if catch_up:
+        header = (
+            f"## 📚 World Model 日报\n\n"
+            f"**{today}** · 补发 **{count}** 篇高价值论文（创新度 ≥ {min_rating}⭐）"
+        )
+    else:
+        header = (
+            f"## 📚 World Model 日报\n\n"
+            f"**{today}** · 本次发现 **{count}** 篇高价值论文（创新度 ≥ {min_rating}⭐）"
+        )
+    blocks = [
+        _format_paper_block(p, i, survey_url)
+        for i, p in enumerate(highlights, start_index)
+    ]
     body = "\n\n---\n\n".join(blocks)
     footer = f"\n\n---\n\n[📖 查看完整列表]({survey_url})"
 
     return title, header + "\n\n---\n\n" + body + footer
 
 
-def notify_highlights() -> int:
-    cfg = load_config()
+def _dingtalk_settings(cfg: dict) -> tuple[dict, str, int, str] | None:
     dingtalk = cfg.get("dingtalk", {})
     site = cfg.get("site", {})
     server = cfg.get("server", {})
     address = server.get("address", "127.0.0.1")
     port = server.get("port", 7777)
     default_url = f"http://{address}:{port}"
+
     if not dingtalk.get("enabled"):
         print("DingTalk notifications disabled in config.")
-        return 0
+        return None
 
     webhook = str(dingtalk.get("webhook", "")).strip()
     if not webhook:
         print("DingTalk webhook not configured, skipping.")
-        return 0
+        return None
 
-    topic = topic_name(cfg)
     min_rating = int(dingtalk.get("min_rating", 4))
     survey_url = (
         str(dingtalk.get("survey_url", "")).strip()
         or str(site.get("public_url", "")).strip()
         or default_url
     )
+    return dingtalk, webhook, min_rating, survey_url
+
+
+def _filter_highlights(
+    papers: list[dict],
+    min_rating: int,
+    since_date: str | None = None,
+) -> list[dict]:
+    highlights = []
+    for paper in papers:
+        if since_date and (paper.get("date") or "") < since_date:
+            continue
+        rating = int(paper.get("rating") or 0)
+        if rating >= min_rating and (paper.get("tldr") or "").strip():
+            highlights.append(paper)
+    highlights.sort(
+        key=lambda p: (int(p.get("rating") or 0), p.get("date", "")),
+        reverse=True,
+    )
+    return highlights
+
+
+def _send_highlights(
+    highlights: list[dict],
+    *,
+    catch_up: bool = False,
+) -> int:
+    if not highlights:
+        return 0
+
+    cfg = load_config()
+    settings = _dingtalk_settings(cfg)
+    if not settings:
+        return 0
+
+    dingtalk, webhook, min_rating, survey_url = settings
+    url = _build_dingtalk_url(webhook, str(dingtalk.get("secret", "")).strip())
+
+    chunks: list[list[dict]] = []
+    current: list[dict] = []
+    for paper in highlights:
+        trial = current + [paper]
+        _, text = build_message(trial, survey_url, min_rating, catch_up=catch_up)
+        if current and len(text) > MAX_MESSAGE_CHARS:
+            chunks.append(current)
+            current = [paper]
+        else:
+            current = trial
+    if current:
+        chunks.append(current)
+
+    sent = 0
+    index = 1
+    for chunk in chunks:
+        part_suffix = f" ({index}/{len(chunks)})" if len(chunks) > 1 else ""
+        title, text = build_message(
+            chunk,
+            survey_url,
+            min_rating,
+            catch_up=catch_up,
+            start_index=index,
+        )
+        title += part_suffix
+        _send_markdown(url, title, text)
+        sent += len(chunk)
+        index += len(chunk)
+        if len(chunks) > 1:
+            time.sleep(1)
+
+    print(f"DingTalk notification sent for {sent} paper(s).")
+    return sent
+
+
+def notify_highlights() -> int:
+    cfg = load_config()
+    settings = _dingtalk_settings(cfg)
+    if not settings:
+        return 0
+
+    _, _, min_rating, _ = settings
+    topic = topic_name(cfg)
 
     batch = _load_run_batch(topic)
     if not batch:
@@ -161,29 +260,43 @@ def notify_highlights() -> int:
         return 0
 
     papers_map = _load_papers(topic)
-    highlights = []
-    for item in batch:
-        aid = item.get("arxiv_id")
-        if not aid:
-            continue
-        paper = papers_map.get(aid, item)
-        rating = int(paper.get("rating") or 0)
-        if rating >= min_rating and (paper.get("tldr") or "").strip():
-            highlights.append(paper)
+    batch_papers = [
+        papers_map.get(item["arxiv_id"], item)
+        for item in batch
+        if item.get("arxiv_id")
+    ]
+    highlights = _filter_highlights(batch_papers, min_rating)
 
     if not highlights:
         print(f"No papers rated >={min_rating} in this batch.")
         _clear_run_batch(topic)
         return 0
 
-    highlights.sort(key=lambda p: (int(p.get("rating") or 0), p.get("date", "")), reverse=True)
-
-    url = _build_dingtalk_url(webhook, str(dingtalk.get("secret", "")).strip())
-    title, text = build_message(highlights, survey_url, min_rating)
-    _send_markdown(url, title, text)
-    print(f"DingTalk notification sent for {len(highlights)} paper(s).")
+    sent = _send_highlights(highlights)
     _clear_run_batch(topic)
-    return len(highlights)
+    return sent
+
+
+def resend_since(since_date: str, *, clear_batch: bool = True) -> int:
+    cfg = load_config()
+    settings = _dingtalk_settings(cfg)
+    if not settings:
+        return 0
+
+    _, _, min_rating, _ = settings
+    topic = topic_name(cfg)
+    papers_map = _load_papers(topic)
+    highlights = _filter_highlights(list(papers_map.values()), min_rating, since_date)
+
+    if not highlights:
+        print(f"No papers rated >={min_rating} since {since_date}.")
+        return 0
+
+    print(f"Resending {len(highlights)} paper(s) since {since_date}...")
+    sent = _send_highlights(highlights, catch_up=True)
+    if clear_batch:
+        _clear_run_batch(topic)
+    return sent
 
 
 def _clear_run_batch(topic: str) -> None:
@@ -193,8 +306,24 @@ def _clear_run_batch(topic: str) -> None:
 
 
 def main():
+    parser = argparse.ArgumentParser(description="Send DingTalk paper highlights")
+    parser.add_argument(
+        "--resend-since",
+        metavar="YYYY-MM-DD",
+        help="Resend all qualifying papers on/after this date (catch-up mode)",
+    )
+    parser.add_argument(
+        "--keep-batch",
+        action="store_true",
+        help="With --resend-since, do not clear run_batch.json afterward",
+    )
+    args = parser.parse_args()
+
     try:
-        count = notify_highlights()
+        if args.resend_since:
+            count = resend_since(args.resend_since, clear_batch=not args.keep_batch)
+        else:
+            count = notify_highlights()
         if count:
             print(f"Notified {count} high-rated paper(s).")
     except Exception as exc:

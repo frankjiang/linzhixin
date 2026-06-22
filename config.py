@@ -4,10 +4,13 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 from copy import deepcopy
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 BASE_DIR = Path(__file__).parent
 CONFIG_PATH = BASE_DIR / "config.json"
@@ -90,6 +93,11 @@ def load_config() -> dict[str, Any]:
             file_cfg = json.load(f)
         if isinstance(file_cfg, dict):
             cfg = _deep_merge(cfg, file_cfg)
+    else:
+        logger.warning(
+            "config.json not found — using defaults (DingTalk disabled). "
+            "Copy config.example.json to config.json."
+        )
 
     proxy = cfg.setdefault("proxy", {})
     proxy["http"] = os.getenv("HTTP_PROXY", proxy.get("http", ""))

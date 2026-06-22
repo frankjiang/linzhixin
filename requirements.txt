@@ -1,0 +1,10 @@
+# paper-survey — Python dependencies
+# Requires Python 3.10+
+#
+# The daily pipeline (fetch, build, notify, serve) uses only the standard library.
+# `pip install -r requirements.txt` is a no-op for packages but documents the
+# environment; use a venv in development if you prefer isolation.
+#
+# System tools (install separately, not via pip):
+#   poppler-utils   — pdftotext for extract_affiliations.py
+#   codex           — OpenAI Codex CLI for run_daily.sh note generation (Phase 4)

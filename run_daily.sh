@@ -15,6 +15,11 @@ PROJECT_ROOT="$(python3 -c "from config import load_config; print(load_config()[
 {
   echo "=== Paper Survey Daily Run: $(date) ==="
 
+  if [ ! -f config.json ]; then
+    echo "WARNING: config.json missing — DingTalk disabled, using config.py defaults."
+    echo "         Copy config.example.json to config.json and fill in secrets."
+  fi
+
   # Phase 1: Fetch new papers from arxiv
   python3 fetch_papers.py
 
