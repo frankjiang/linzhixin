@@ -39,6 +39,11 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "min_rating": 4,
         "survey_url": "http://127.0.0.1:7777",
     },
+    "dingtalk_manager": {
+        "enabled": False,
+        "webhook": "",
+        "secret": "",
+    },
     "server": {
         "host": "0.0.0.0",
         "port": 7777,

@@ -21,6 +21,11 @@
     "min_rating": 4,
     "survey_url": "http://127.0.0.1:7777"
   },
+  "dingtalk_manager": {
+    "enabled": true,
+    "webhook": "https://oapi.dingtalk.com/robot/send?access_token=YOUR_ACCESS_TOKEN",
+    "secret": "YOUR_DINGTALK_SECRET"
+  },
   "server": {
     "host": "0.0.0.0",
     "address": "30.79.84.80",

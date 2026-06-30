@@ -18,6 +18,7 @@
 - **评分与筛选**：创新度 1–5 星、相关度 0–3 级，支持搜索与多维排序
 - **查漏补缺**：缺笔记、缺评分、缺 TL;DR 的论文会自动重新进入处理队列
 - **钉钉推送**：本次批次中 ≥4 星的论文，推送 Markdown 摘要（含「快速阅读」深链接）
+- **管理告警**：日报运行出错时，通过 `dingtalk_manager` 机器人推送运维告警
 - **深链接**：`?paper=2606.12403v1` 可直达某篇论文并展开详情
 - **LaTeX 渲染**：标题与摘要中的 `$\\texttt{...}$`、希腊字母等由 KaTeX 渲染
 - **清退机制**：按评分与论文日期从网页下架旧论文（1 星 >1 月、2 星 >2 月、3 星 >6 月、4–5 星 >1 年）；`notes/` 中的笔记保留不删
@@ -91,6 +92,8 @@ python3 server.py
 | `dingtalk.secret` | 加签密钥（SEC 开头） |
 | `dingtalk.min_rating` | 推送最低创新度星级（默认 4） |
 | `dingtalk.survey_url` | 推送消息中「查看完整列表 / 快速阅读」的基础 URL |
+| `dingtalk_manager.enabled` | 是否启用管理告警机器人 |
+| `dingtalk_manager.webhook` / `secret` | 管理群机器人 Webhook 与加签密钥（与论文推送机器人分开） |
 | `site.public_url` | 对外站点地址（GitHub Pages）；钉钉链接的备选 |
 | `site.github_url` | 页面右上角仓库链接 |
 | `server.host` / `port` | 本地 `server.py` 监听地址 |
@@ -122,8 +125,9 @@ bash run_daily.sh
 | 6 | `build_page.py` | 生成 `docs/index.html` |
 | 7 | `notify_dingtalk.py` | 推送本批次 ≥ `min_rating` 星论文到钉钉 |
 | 8 | git commit & push | 提交 `docs/`、`notes/` 并推送 GitHub Pages |
+| 9 | `notify_manager.py` | 若运行中有错误，向管理钉钉群发送告警汇总 |
 
-若 Phase 4 没有待处理论文，会跳过 Codex，其余阶段照常执行。
+若 Phase 4 没有待处理论文，会跳过 Codex，其余阶段照常执行。单个阶段失败不会中断整条流水线；所有错误会在 Phase 9 汇总告警（需配置 `dingtalk_manager`）。
 
 ### 常用单步命令
 
@@ -141,6 +145,9 @@ python3 notify_dingtalk.py
 # 补发遗漏推送：指定日期以来所有符合条件论文，合并为今日日报格式
 python3 notify_dingtalk.py --resend-since 2026-06-13
 
+# 手动发送管理告警（测试机器人连通性）
+python3 notify_manager.py "测试告警：手动触发"
+
 # 从笔记同步 TL;DR / 评分到 papers.json
 python3 sync_from_notes.py
 ```
@@ -148,8 +155,8 @@ python3 sync_from_notes.py
 ### 定时任务
 
 ```cron
-# 每天 00:00 执行日报
-0 0 * * * /path/to/paper-survey/run_daily.sh
+# 每 6 小时执行一次日报（与当前 crontab 一致）
+0 */6 * * * /path/to/paper-survey/run_daily.sh
 ```
 
 建议使用绝对路径，并确保 cron 环境中的 `codex`、代理与交互式 shell 一致（`run_daily.sh` 会通过 `config.json` 注入 PATH 与代理）。
@@ -191,7 +198,9 @@ python3 sync_from_notes.py
 | 网页更新但钉钉长期静默 | 同上，或本批次无 ≥4 星论文 | 查 `logs/YYYYMMDD.log`；可用 `--resend-since` 补发 |
 | GitHub Pages 未更新 | push 失败或无新 commit | 查日志 Phase 8；手动 `git push` |
 | 机构为空 | 未安装 `pdftotext` 或 PDF 未下载 | `apt install poppler-utils`；检查 `data/.../pdfs/` |
-| Codex 未运行 | 无待处理论文，或 `codex` 不在 PATH | 查 `generate_notes.py` 输出；配置 `paths.codex_bin_dirs` |
+| Codex 未运行 / 认证失败 | token 过期或 refresh 冲突 | `codex logout && codex login`；查 `scripts/check_codex_auth.sh` |
+| 管理群收到告警 | 日报某阶段失败 | 查告警中的日志路径；常见为 arXiv 429、Codex 401、git push 失败 |
+| 有错误但未收到管理告警 | `dingtalk_manager` 未配置 | 在 `config.json` 中设置 `dingtalk_manager.enabled: true` 及 webhook |
 
 **备份建议：** 定期备份 `config.json`（含 webhook/secret），该文件不在 git 中，误删后推送会静默失败。
 
@@ -211,7 +220,10 @@ python3 sync_from_notes.py
 ├── sync_from_notes.py
 ├── retire_papers.py
 ├── build_page.py
-├── notify_dingtalk.py
+├── dingtalk_util.py       # 钉钉机器人公共工具
+├── notify_dingtalk.py     # 高星论文推送
+├── notify_manager.py      # 管理告警推送
+├── scripts/check_codex_auth.sh
 ├── server.py              # 本地 HTTP 服务
 ├── data/world_model/      # 论文数据、PDF、批次文件（不入库）
 ├── notes/world_model/     # Agent 生成的 Markdown 笔记

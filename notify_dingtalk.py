@@ -4,20 +4,15 @@
 from __future__ import annotations
 
 import argparse
-import base64
-import hashlib
-import hmac
 import json
 import time
-import urllib.parse
-import urllib.request
 from datetime import datetime
 from pathlib import Path
 
 from config import BASE_DIR, load_config, topic_name
+from dingtalk_util import resolve_bot_url, send_markdown
 
 DATA_DIR = BASE_DIR / "data"
-DINGTALK_DEFAULT_BASE = "https://oapi.dingtalk.com/robot/send"
 MAX_MESSAGE_CHARS = 18000
 
 RELEVANCE_LABELS = {
@@ -26,53 +21,6 @@ RELEVANCE_LABELS = {
     1: "Tangential",
     0: "Noise",
 }
-
-
-def _build_dingtalk_url(webhook: str, secret: str) -> str:
-    raw = webhook.strip()
-    if not raw:
-        return ""
-    if raw.startswith("http://") or raw.startswith("https://"):
-        base = raw
-    else:
-        base = f"{DINGTALK_DEFAULT_BASE}?access_token={urllib.parse.quote_plus(raw)}"
-
-    if not secret:
-        return base
-
-    timestamp = str(round(time.time() * 1000))
-    string_to_sign = f"{timestamp}\n{secret}"
-    hmac_code = hmac.new(
-        secret.encode(), string_to_sign.encode(), digestmod=hashlib.sha256
-    ).digest()
-    sign = urllib.parse.quote_plus(base64.b64encode(hmac_code))
-
-    parsed = urllib.parse.urlparse(base)
-    query = urllib.parse.parse_qsl(parsed.query, keep_blank_values=True)
-    query = [(k, v) for k, v in query if k not in {"timestamp", "sign"}]
-    query.append(("timestamp", timestamp))
-    query.append(("sign", sign))
-    return urllib.parse.urlunparse(parsed._replace(query=urllib.parse.urlencode(query)))
-
-
-def _send_markdown(url: str, title: str, text: str) -> dict:
-    payload = {
-        "msgtype": "markdown",
-        "markdown": {"title": title, "text": text},
-    }
-    data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-    req = urllib.request.Request(
-        url,
-        data=data,
-        headers={"Content-Type": "application/json; charset=utf-8"},
-        method="POST",
-    )
-    with urllib.request.urlopen(req, timeout=15) as resp:
-        body = resp.read().decode("utf-8")
-    result = json.loads(body)
-    if result.get("errcode") != 0:
-        raise RuntimeError(f"DingTalk API error: {result}")
-    return result
 
 
 def _load_run_batch(topic: str) -> list[dict]:
@@ -207,8 +155,10 @@ def _send_highlights(
     if not settings:
         return 0
 
-    dingtalk, webhook, min_rating, survey_url = settings
-    url = _build_dingtalk_url(webhook, str(dingtalk.get("secret", "")).strip())
+    _, _, min_rating, survey_url = settings
+    url = resolve_bot_url(load_config(), "dingtalk")
+    if not url:
+        return 0
 
     chunks: list[list[dict]] = []
     current: list[dict] = []
@@ -235,7 +185,7 @@ def _send_highlights(
             start_index=index,
         )
         title += part_suffix
-        _send_markdown(url, title, text)
+        send_markdown(url, title, text)
         sent += len(chunk)
         index += len(chunk)
         if len(chunks) > 1:
