@@ -31,14 +31,15 @@ run_phase() {
   local name="$1"
   shift
   echo "--- Phase: ${name} ---"
-  if "$@"; then
+  "$@"
+  local code=$?
+  if [ "$code" -eq 0 ]; then
     echo "Phase completed: ${name}"
     return 0
   fi
-  local code=$?
   log_error "Phase failed: ${name} (exit ${code})"
   echo "WARNING: Phase failed: ${name} (exit ${code})"
-  return "${code}"
+  return "$code"
 }
 
 {

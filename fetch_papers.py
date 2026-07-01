@@ -3,6 +3,7 @@
 
 import urllib.request
 import urllib.parse
+import urllib.error
 import xml.etree.ElementTree as ET
 import json
 import csv
@@ -81,16 +82,30 @@ def fetch_arxiv(keyword: str, max_results: int = 200, start: int = 0) -> str:
         "max_results": max_results,
     })
     url = f"{ARXIV_API}?{params}"
-    for attempt in range(3):
+    delays = (5, 15, 45)
+    last_error: Exception | None = None
+    for attempt, delay in enumerate(delays):
         try:
             req = urllib.request.Request(url, headers={"User-Agent": "PaperSurveyBot/1.0"})
             with urllib.request.urlopen(req, timeout=30) as resp:
                 return resp.read().decode("utf-8")
+        except urllib.error.HTTPError as e:
+            last_error = e
+            if e.code == 429 and attempt < len(delays) - 1:
+                print(f"  arXiv rate limited (429), retry in {delay}s...")
+                time.sleep(delay)
+                continue
+            if attempt < len(delays) - 1:
+                time.sleep(delay)
+                continue
+            raise RuntimeError(f"Failed to fetch arxiv after {len(delays)} attempts: {e}") from e
         except Exception as e:
-            if attempt < 2:
-                time.sleep(3 * (attempt + 1))
-            else:
-                raise RuntimeError(f"Failed to fetch arxiv after 3 attempts: {e}")
+            last_error = e
+            if attempt < len(delays) - 1:
+                time.sleep(delay)
+                continue
+            raise RuntimeError(f"Failed to fetch arxiv after {len(delays)} attempts: {e}") from e
+    raise RuntimeError(f"Failed to fetch arxiv: {last_error}")
 
 
 def parse_entries(xml_text: str, cutoff_date: datetime) -> list[dict]:
