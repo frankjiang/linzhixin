@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Build a self-contained index.html from paper data."""
 
+from __future__ import annotations
+
 import json
 import shutil
 from datetime import datetime
