@@ -497,16 +497,55 @@ a:hover {{ text-decoration: underline; color: var(--accent-hover); }}
   border: 1px solid var(--border);
   border-radius: 6px;
   font-size: 0.8125rem;
-  line-height: 1.7;
+  line-height: 1.55;
 }}
 .paper-note h1, .paper-note h2, .paper-note h3 {{
-  margin-top: 12px;
-  margin-bottom: 6px;
-  font-size: 0.9rem;
   color: var(--text);
+  line-height: 1.35;
 }}
-.paper-note p {{ margin-bottom: 6px; }}
-.paper-note ul, .paper-note ol {{ padding-left: 1.25rem; margin-bottom: 6px; }}
+.paper-note h1 {{
+  margin: 0 0 10px;
+  font-size: 0.95rem;
+}}
+.paper-note h2 {{
+  margin: 20px 0 3px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-muted);
+  font-size: 0.875rem;
+}}
+.paper-note h1 + h2, .paper-note h2:first-child {{
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}}
+.paper-note h3 {{
+  margin: 14px 0 3px;
+  font-size: 0.8125rem;
+}}
+.paper-note p {{
+  margin: 0 0 7px;
+}}
+.paper-note h2 + p, .paper-note h3 + p {{
+  margin-top: 0;
+}}
+.paper-note ul, .paper-note ol {{
+  padding-left: 1.2rem;
+  margin: 2px 0 7px;
+}}
+.paper-note li + li {{
+  margin-top: 2px;
+}}
+.paper-note blockquote {{
+  margin: 0 0 8px;
+  padding-left: 10px;
+  color: var(--text2);
+  border-left: 3px solid var(--border-muted);
+}}
+.paper-note hr {{
+  border: 0;
+  border-top: 1px solid var(--border-muted);
+  margin: 12px 0;
+}}
 .rel-tag {{
   display: inline-flex;
   align-items: center;
@@ -740,20 +779,94 @@ function getStars(rating) {{
     `</span>`;
 }}
 
-function mdToHtml(md) {{
-  if (!md) return '';
-  let h = esc(md)
-    .replace(/^### (.+)$/gm, '<h3>$1</h3>')
-    .replace(/^## (.+)$/gm, '<h2>$1</h2>')
-    .replace(/^# (.+)$/gm, '<h1>$1</h1>')
+function inlineMd(text) {{
+  return esc(text)
     .replace(/\\*\\*(.+?)\\*\\*/g, '<strong>$1</strong>')
     .replace(/\\*(.+?)\\*/g, '<em>$1</em>')
-    .replace(/`(.+?)`/g, '<code>$1</code>')
-    .replace(/^- (.+)$/gm, '<li>$1</li>')
-    .replace(/(<li>.*<\\/li>)/s, '<ul>$1</ul>')
-    .replace(/\\n\\n/g, '</p><p>')
-    .replace(/\\n/g, '<br>');
-  return '<p>' + h + '</p>';
+    .replace(/`(.+?)`/g, '<code>$1</code>');
+}}
+
+function mdToHtml(md) {{
+  if (!md) return '';
+  const lines = md.replace(/\\r\\n/g, '\\n').split('\\n');
+  const html = [];
+  let para = [];
+  let list = [];
+  let listType = '';
+
+  const flushPara = () => {{
+    if (!para.length) return;
+    html.push(`<p>${{para.map(inlineMd).join('<br>')}}</p>`);
+    para = [];
+  }};
+
+  const flushList = () => {{
+    if (!list.length) return;
+    const tag = listType || 'ul';
+    html.push(`<${{tag}}>${{list.map(item => `<li>${{inlineMd(item)}}</li>`).join('')}}</${{tag}}>`);
+    list = [];
+    listType = '';
+  }};
+
+  for (const rawLine of lines) {{
+    const line = rawLine.trimEnd();
+    const trimmed = line.trim();
+
+    if (!trimmed) {{
+      flushPara();
+      flushList();
+      continue;
+    }}
+
+    let m = trimmed.match(/^(#{{1,3}})\\s+(.+)$/);
+    if (m) {{
+      flushPara();
+      flushList();
+      const level = m[1].length;
+      html.push(`<h${{level}}>${{inlineMd(m[2])}}</h${{level}}>`);
+      continue;
+    }}
+
+    m = trimmed.match(/^- (.+)$/);
+    if (m) {{
+      flushPara();
+      if (listType && listType !== 'ul') flushList();
+      listType = 'ul';
+      list.push(m[1]);
+      continue;
+    }}
+
+    m = trimmed.match(/^\\d+\\. (.+)$/);
+    if (m) {{
+      flushPara();
+      if (listType && listType !== 'ol') flushList();
+      listType = 'ol';
+      list.push(m[1]);
+      continue;
+    }}
+
+    m = trimmed.match(/^>\\s?(.+)$/);
+    if (m) {{
+      flushPara();
+      flushList();
+      html.push(`<blockquote>${{inlineMd(m[1])}}</blockquote>`);
+      continue;
+    }}
+
+    if (/^-{{3,}}$/.test(trimmed)) {{
+      flushPara();
+      flushList();
+      html.push('<hr>');
+      continue;
+    }}
+
+    flushList();
+    para.push(line);
+  }}
+
+  flushPara();
+  flushList();
+  return html.join('');
 }}
 
 function renderPapers() {{
