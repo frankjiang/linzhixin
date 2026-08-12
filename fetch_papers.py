@@ -5,17 +5,25 @@ import urllib.request
 import urllib.parse
 import urllib.error
 import xml.etree.ElementTree as ET
+import hashlib
 import json
 import csv
 import os
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
+from typing import Optional
+from zoneinfo import ZoneInfo
 
 BASE_DIR = Path(__file__).parent
 DATA_DIR = BASE_DIR / "data"
-ARXIV_API = "http://export.arxiv.org/api/query"
+ARXIV_API = "https://export.arxiv.org/api/query"
+ARXIV_CACHE_DIR = DATA_DIR / ".cache" / "arxiv"
+ARXIV_TIMEZONE = ZoneInfo("America/New_York")
+ARXIV_MIN_INTERVAL = 3.1
 NS = {"atom": "http://www.w3.org/2005/Atom", "arxiv": "http://arxiv.org/schemas/atom"}
+
+_last_arxiv_request_at: Optional[float] = None
 
 ALLOWED_CAT_PREFIXES = ("cs.", "stat.ML", "eess.IV", "eess.SP")
 EXCLUDED_CATS = {"cs.CL", "cs.IR", "cs.DB", "cs.CR", "cs.SE", "cs.PL", "cs.DC"}
@@ -72,6 +80,68 @@ TOPICS = {
 }
 
 
+def _arxiv_day() -> str:
+    """Return the arXiv publication day used for the daily query cache."""
+    return datetime.now(ARXIV_TIMEZONE).date().isoformat()
+
+
+def _arxiv_cache_path(url: str) -> Path:
+    key = hashlib.sha256(url.encode("utf-8")).hexdigest()
+    return ARXIV_CACHE_DIR / f"{key}.xml"
+
+
+def _cache_is_current(cache_path: Path) -> bool:
+    day_path = cache_path.with_suffix(".day")
+    try:
+        return cache_path.is_file() and day_path.read_text(encoding="utf-8").strip() == _arxiv_day()
+    except OSError:
+        return False
+
+
+def _write_arxiv_cache(cache_path: Path, xml_text: str) -> None:
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    day_path = cache_path.with_suffix(".day")
+    xml_tmp = cache_path.with_name(f".{cache_path.name}.{os.getpid()}.tmp")
+    day_tmp = day_path.with_name(f".{day_path.name}.{os.getpid()}.tmp")
+    try:
+        xml_tmp.write_text(xml_text, encoding="utf-8")
+        day_tmp.write_text(f"{_arxiv_day()}\n", encoding="utf-8")
+        os.replace(xml_tmp, cache_path)
+        os.replace(day_tmp, day_path)
+    finally:
+        xml_tmp.unlink(missing_ok=True)
+        day_tmp.unlink(missing_ok=True)
+
+
+def _wait_for_arxiv_slot() -> None:
+    """Enforce arXiv's one-request-per-three-seconds legacy API limit."""
+    global _last_arxiv_request_at
+
+    now = time.monotonic()
+    if _last_arxiv_request_at is not None:
+        wait = ARXIV_MIN_INTERVAL - (now - _last_arxiv_request_at)
+        if wait > 0:
+            time.sleep(wait)
+            now = time.monotonic()
+    _last_arxiv_request_at = now
+
+
+def _open_arxiv(req: urllib.request.Request, timeout: int = 30):
+    """Open arXiv directly so a shared model-proxy IP cannot consume our quota."""
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    return opener.open(req, timeout=timeout)
+
+
+def _retry_after_seconds(error: urllib.error.HTTPError, fallback: float) -> float:
+    value = error.headers.get("Retry-After") if error.headers else None
+    if value is not None:
+        try:
+            return max(float(value), fallback)
+        except ValueError:
+            pass
+    return fallback
+
+
 def fetch_arxiv(keyword: str, max_results: int = 200, start: int = 0) -> str:
     query = f'all:"{keyword}"'
     params = urllib.parse.urlencode({
@@ -82,30 +152,41 @@ def fetch_arxiv(keyword: str, max_results: int = 200, start: int = 0) -> str:
         "max_results": max_results,
     })
     url = f"{ARXIV_API}?{params}"
+    cache_path = _arxiv_cache_path(url)
+    if _cache_is_current(cache_path):
+        print(f"  Using today's cached arXiv response: \"{keyword}\" page {start // max_results + 1}")
+        return cache_path.read_text(encoding="utf-8")
+
     delays = (5, 15, 45)
     last_error: Exception | None = None
     for attempt, delay in enumerate(delays):
+        _wait_for_arxiv_slot()
         try:
             req = urllib.request.Request(url, headers={"User-Agent": "PaperSurveyBot/1.0"})
-            with urllib.request.urlopen(req, timeout=30) as resp:
-                return resp.read().decode("utf-8")
+            with _open_arxiv(req, timeout=30) as resp:
+                xml_text = resp.read().decode("utf-8")
+            _write_arxiv_cache(cache_path, xml_text)
+            return xml_text
         except urllib.error.HTTPError as e:
             last_error = e
             if e.code == 429 and attempt < len(delays) - 1:
-                print(f"  arXiv rate limited (429), retry in {delay}s...")
-                time.sleep(delay)
+                retry_delay = _retry_after_seconds(e, delay)
+                print(f"  arXiv rate limited (429), retry in {retry_delay:g}s...")
+                time.sleep(retry_delay)
                 continue
             if attempt < len(delays) - 1:
                 time.sleep(delay)
                 continue
-            raise RuntimeError(f"Failed to fetch arxiv after {len(delays)} attempts: {e}") from e
         except Exception as e:
             last_error = e
             if attempt < len(delays) - 1:
                 time.sleep(delay)
                 continue
-            raise RuntimeError(f"Failed to fetch arxiv after {len(delays)} attempts: {e}") from e
-    raise RuntimeError(f"Failed to fetch arxiv: {last_error}")
+
+    if cache_path.is_file():
+        print(f"  WARNING: arXiv unavailable after {len(delays)} attempts; using last successful cache")
+        return cache_path.read_text(encoding="utf-8")
+    raise RuntimeError(f"Failed to fetch arxiv after {len(delays)} attempts: {last_error}") from last_error
 
 
 def parse_entries(xml_text: str, cutoff_date: datetime) -> list[dict]:
