@@ -4,6 +4,8 @@
 import json
 from pathlib import Path
 
+from paper_store import load_papers, save_papers
+
 BASE_DIR = Path(__file__).parent
 DATA_DIR = BASE_DIR / "data"
 TOPIC = "world_model"
@@ -21,8 +23,7 @@ def main():
     results_map = {r["arxiv_id"]: r for r in results}
 
     json_path = DATA_DIR / TOPIC / "papers.json"
-    with open(json_path, encoding="utf-8") as f:
-        papers = json.load(f)
+    papers = load_papers(json_path)
 
     updated = 0
     for p in papers:
@@ -38,8 +39,7 @@ def main():
             p["relevance"] = r["relevance"]
         updated += 1
 
-    with open(json_path, "w", encoding="utf-8") as f:
-        json.dump(papers, f, ensure_ascii=False, indent=2)
+    save_papers(json_path, papers)
 
     results_path.unlink()
     print(f"Merged {updated} results into papers.json")

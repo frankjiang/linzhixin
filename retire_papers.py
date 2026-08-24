@@ -8,11 +8,11 @@ site. Notes and PDFs on disk are preserved.
 from __future__ import annotations
 
 import csv
-import json
 from datetime import datetime
 from pathlib import Path
 
 from config import load_config, topic_name
+from paper_store import load_papers, save_papers
 
 BASE_DIR = Path(__file__).parent
 DATA_DIR = BASE_DIR / "data"
@@ -82,8 +82,7 @@ def main():
         print("No papers.json found, skipping retirement.")
         return
 
-    with open(json_path, encoding="utf-8") as f:
-        papers = json.load(f)
+    papers = load_papers(json_path)
 
     today = datetime.now()
     kept: list[dict] = []
@@ -108,8 +107,7 @@ def main():
             f"limit={policy.get(rating)}d, notes kept)"
         )
 
-    with open(json_path, "w", encoding="utf-8") as f:
-        json.dump(kept, f, ensure_ascii=False, indent=2)
+    save_papers(json_path, kept)
     save_csv(kept, csv_path)
 
     print(f"Retired {len(retired)} paper(s), {len(kept)} remaining (notes preserved).")

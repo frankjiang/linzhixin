@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """Extract author affiliations from PDF first pages."""
 
-import json
 import re
 import subprocess
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
+
+from paper_store import load_papers, save_papers
 
 BASE_DIR = Path(__file__).parent
 DATA_DIR = BASE_DIR / "data"
@@ -109,8 +110,7 @@ def process_paper(paper: dict) -> tuple[str, list[str]]:
 
 def main():
     json_path = DATA_DIR / TOPIC / "papers.json"
-    with open(json_path, encoding="utf-8") as f:
-        papers = json.load(f)
+    papers = load_papers(json_path)
 
     print(f"Extracting affiliations for {len(papers)} papers...")
 
@@ -127,8 +127,7 @@ def main():
             p["affiliations"] = results[p["arxiv_id"]]
             updated += 1
 
-    with open(json_path, "w", encoding="utf-8") as f:
-        json.dump(papers, f, ensure_ascii=False, indent=2)
+    save_papers(json_path, papers)
 
     has_affil = sum(1 for p in papers if p.get("affiliations"))
     print(f"Updated {updated} papers, {has_affil}/{len(papers)} have affiliations")

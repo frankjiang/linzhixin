@@ -5,6 +5,8 @@ import json
 import sys
 from pathlib import Path
 
+from paper_store import load_papers
+
 BASE_DIR = Path(__file__).parent
 DATA_DIR = BASE_DIR / "data"
 NOTES_DIR = BASE_DIR / "notes"
@@ -32,8 +34,7 @@ def main():
         print("No papers.json found")
         return
 
-    with open(json_path, encoding="utf-8") as f:
-        papers = json.load(f)
+    papers = load_papers(json_path)
 
     notes_dir = NOTES_DIR / TOPIC
     notes_dir.mkdir(parents=True, exist_ok=True)

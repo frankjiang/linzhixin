@@ -9,6 +9,7 @@ from datetime import datetime
 from pathlib import Path
 
 from config import load_config, topic_name
+from paper_store import load_papers as load_papers_file
 
 BASE_DIR = Path(__file__).parent
 DATA_DIR = BASE_DIR / "data"
@@ -20,8 +21,7 @@ def load_papers(topic: str) -> list[dict]:
     json_path = DATA_DIR / topic / "papers.json"
     if not json_path.exists():
         return []
-    with open(json_path, encoding="utf-8") as f:
-        return json.load(f)
+    return load_papers_file(json_path)
 
 
 def load_notes(topic: str) -> dict[str, str]:

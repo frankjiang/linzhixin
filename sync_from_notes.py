@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Sync tldr/rating/relevance from note markdown into papers.json."""
 
-import json
 import re
 from pathlib import Path
+
+from paper_store import load_papers, save_papers
 
 BASE_DIR = Path(__file__).parent
 DATA_DIR = BASE_DIR / "data"
@@ -35,8 +36,7 @@ def main():
         print("No papers.json found")
         return
 
-    with open(json_path, encoding="utf-8") as f:
-        papers = json.load(f)
+    papers = load_papers(json_path)
 
     notes_dir = NOTES_DIR / TOPIC
     if not notes_dir.exists():
@@ -68,8 +68,7 @@ def main():
             updated += 1
 
     if updated:
-        with open(json_path, "w", encoding="utf-8") as f:
-            json.dump(papers, f, ensure_ascii=False, indent=2)
+        save_papers(json_path, papers)
     print(f"Synced metadata from notes for {updated} papers")
 
 

@@ -6,7 +6,6 @@ import urllib.parse
 import urllib.error
 import xml.etree.ElementTree as ET
 import hashlib
-import json
 import csv
 import os
 import time
@@ -14,6 +13,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
 from zoneinfo import ZoneInfo
+
+from paper_store import load_papers, save_papers
 
 BASE_DIR = Path(__file__).parent
 DATA_DIR = BASE_DIR / "data"
@@ -297,8 +298,7 @@ def deduplicate(papers: list[dict]) -> list[dict]:
 def merge_with_existing(new_papers: list[dict], json_path: Path) -> list[dict]:
     existing = []
     if json_path.exists():
-        with open(json_path) as f:
-            existing = json.load(f)
+        existing = load_papers(json_path)
 
     existing_ids = {p["arxiv_id"] for p in existing}
     added = 0
@@ -356,8 +356,7 @@ def fetch_topic(topic_name: str, config: dict):
 
     merged = merge_with_existing(all_papers, json_path)
 
-    with open(json_path, "w", encoding="utf-8") as f:
-        json.dump(merged, f, ensure_ascii=False, indent=2)
+    save_papers(json_path, merged)
 
     save_csv(merged, csv_path)
     print(f"  Saved: {json_path}")

@@ -42,6 +42,21 @@ run_phase() {
   return "$code"
 }
 
+check_storage() {
+  local required_kb="${PAPER_SURVEY_MIN_FREE_KB:-5242880}"
+  local available_kb
+  available_kb="$(df -Pk "$PROJECT_ROOT" | awk 'NR == 2 {print $4}')"
+  if [[ ! "$available_kb" =~ ^[0-9]+$ ]]; then
+    echo "Unable to determine free disk space for $PROJECT_ROOT"
+    return 1
+  fi
+  echo "Storage preflight: $((available_kb / 1024)) MiB free; $((required_kb / 1024)) MiB required"
+  if [ "$available_kb" -lt "$required_kb" ]; then
+    echo "Insufficient free disk space; data phases will not run."
+    return 1
+  fi
+}
+
 {
   echo "=== Paper Survey Daily Run: $(date) ==="
 
@@ -51,8 +66,9 @@ run_phase() {
     echo "         Copy config.example.json to config.json and fill in secrets."
   fi
 
-  # Phase 1: Fetch new papers from arxiv
-  run_phase "fetch_papers" python3 fetch_papers.py || true
+  if run_phase "storage_preflight" check_storage; then
+    # Phase 1: Fetch new papers from arxiv
+    run_phase "fetch_papers" python3 fetch_papers.py || true
 
   # Phase 2: Download PDFs (incremental)
   run_phase "download_pdfs" python3 download_pdfs.py || true
@@ -206,8 +222,11 @@ EOF
         echo "WARNING: git push failed (GitHub Pages will not update until push succeeds)"
       fi
     fi
+    else
+      echo "Not a git repository, skipping commit."
+    fi
   else
-    echo "Not a git repository, skipping commit."
+    echo "Skipping paper processing because storage preflight failed."
   fi
 
   if [ -s "$ERRORS_FILE" ]; then

@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """Download PDFs for papers, skipping already downloaded ones."""
 
-import json
 import re
 import time
 import urllib.request
 from pathlib import Path
+
+from paper_store import load_papers
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 BASE_DIR = Path(__file__).parent
@@ -61,8 +62,7 @@ def main():
         print("No papers.json found, run fetch_papers.py first")
         return
 
-    with open(json_path, encoding="utf-8") as f:
-        papers = json.load(f)
+    papers = load_papers(json_path)
 
     pdf_dir = DATA_DIR / TOPIC / "pdfs"
     pdf_dir.mkdir(parents=True, exist_ok=True)

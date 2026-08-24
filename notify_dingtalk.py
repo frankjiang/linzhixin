@@ -12,6 +12,7 @@ from pathlib import Path
 
 from config import BASE_DIR, load_config, topic_name
 from dingtalk_util import resolve_bot_url, send_markdown
+from paper_store import load_papers
 
 DATA_DIR = BASE_DIR / "data"
 MAX_MESSAGE_CHARS = 18000
@@ -37,8 +38,7 @@ def _load_papers(topic: str) -> dict[str, dict]:
     json_path = DATA_DIR / topic / "papers.json"
     if not json_path.exists():
         return {}
-    with open(json_path, encoding="utf-8") as f:
-        papers = json.load(f)
+    papers = load_papers(json_path)
     return {p["arxiv_id"]: p for p in papers}
 
 
