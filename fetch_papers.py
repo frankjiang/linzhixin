@@ -7,9 +7,11 @@ import urllib.error
 import xml.etree.ElementTree as ET
 import hashlib
 import csv
+import math
 import os
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+from email.utils import parsedate_to_datetime
 from pathlib import Path
 from typing import Optional
 from zoneinfo import ZoneInfo
@@ -22,9 +24,28 @@ ARXIV_API = "https://export.arxiv.org/api/query"
 ARXIV_CACHE_DIR = DATA_DIR / ".cache" / "arxiv"
 ARXIV_TIMEZONE = ZoneInfo("America/New_York")
 ARXIV_MIN_INTERVAL = 3.1
+FETCH_STAGE_TIMEOUT_SECONDS = 3600
+ARXIV_REQUEST_TIMEOUT_SECONDS = 30
+ARXIV_MAX_ATTEMPTS = 32
 NS = {"atom": "http://www.w3.org/2005/Atom", "arxiv": "http://arxiv.org/schemas/atom"}
 
 _last_arxiv_request_at: Optional[float] = None
+
+
+class FetchDeadlineExceeded(TimeoutError):
+    """The complete fetch phase exhausted its one-hour budget."""
+
+
+def _remaining_time(deadline: float) -> float:
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise FetchDeadlineExceeded("fetch_papers exceeded the 1 hour deadline without complete fresh data")
+    return remaining
+
+
+def _sleep_with_deadline(seconds: float, deadline: float) -> None:
+    time.sleep(min(seconds, _remaining_time(deadline)))
+    _remaining_time(deadline)
 
 ALLOWED_CAT_PREFIXES = ("cs.", "stat.ML", "eess.IV", "eess.SP")
 EXCLUDED_CATS = {"cs.CL", "cs.IR", "cs.DB", "cs.CR", "cs.SE", "cs.PL", "cs.DC"}
@@ -114,7 +135,7 @@ def _write_arxiv_cache(cache_path: Path, xml_text: str) -> None:
         day_tmp.unlink(missing_ok=True)
 
 
-def _wait_for_arxiv_slot() -> None:
+def _wait_for_arxiv_slot(deadline: float | None = None) -> None:
     """Enforce arXiv's one-request-per-three-seconds legacy API limit."""
     global _last_arxiv_request_at
 
@@ -122,7 +143,10 @@ def _wait_for_arxiv_slot() -> None:
     if _last_arxiv_request_at is not None:
         wait = ARXIV_MIN_INTERVAL - (now - _last_arxiv_request_at)
         if wait > 0:
-            time.sleep(wait)
+            if deadline is None:
+                time.sleep(wait)
+            else:
+                _sleep_with_deadline(wait, deadline)
             now = time.monotonic()
     _last_arxiv_request_at = now
 
@@ -137,13 +161,42 @@ def _retry_after_seconds(error: urllib.error.HTTPError, fallback: float) -> floa
     value = error.headers.get("Retry-After") if error.headers else None
     if value is not None:
         try:
-            return max(float(value), fallback)
+            seconds = float(value)
+            if math.isfinite(seconds):
+                return max(seconds, fallback)
         except ValueError:
+            pass
+        try:
+            when = parsedate_to_datetime(value)
+            if when.tzinfo is None:
+                when = when.replace(tzinfo=timezone.utc)
+            return max((when - datetime.now(timezone.utc)).total_seconds(), fallback)
+        except (TypeError, ValueError, OverflowError):
             pass
     return fallback
 
 
-def fetch_arxiv(keyword: str, max_results: int = 200, start: int = 0) -> str:
+def _retry_delay(attempt: int) -> float:
+    # Persistent 406/429 responses should not hammer the arXiv endpoint.
+    return min(30 * (2 ** min(attempt, 2)), 120)
+
+
+def _is_retryable_http_status(status: int) -> bool:
+    return status in (406, 408, 425, 429) or 500 <= status <= 599
+
+
+def _stale_cache_info(cache_path: Path) -> str:
+    if not cache_path.is_file():
+        return ""
+    day_path = cache_path.with_suffix(".day")
+    cache_day = day_path.read_text(encoding="utf-8").strip() if day_path.is_file() else "unknown"
+    return f"; stale cache dated {cache_day} was not used"
+
+
+def fetch_arxiv(keyword: str, max_results: int = 200, start: int = 0, *, deadline: float | None = None) -> str:
+    if deadline is None:
+        deadline = time.monotonic() + FETCH_STAGE_TIMEOUT_SECONDS
+    _remaining_time(deadline)
     query = f'all:"{keyword}"'
     params = urllib.parse.urlencode({
         "search_query": query,
@@ -158,36 +211,50 @@ def fetch_arxiv(keyword: str, max_results: int = 200, start: int = 0) -> str:
         print(f"  Using today's cached arXiv response: \"{keyword}\" page {start // max_results + 1}")
         return cache_path.read_text(encoding="utf-8")
 
-    delays = (5, 15, 45)
     last_error: Exception | None = None
-    for attempt, delay in enumerate(delays):
-        _wait_for_arxiv_slot()
-        try:
-            req = urllib.request.Request(url, headers={"User-Agent": "PaperSurveyBot/1.0"})
-            with _open_arxiv(req, timeout=30) as resp:
-                xml_text = resp.read().decode("utf-8")
-            _write_arxiv_cache(cache_path, xml_text)
-            return xml_text
-        except urllib.error.HTTPError as e:
-            last_error = e
-            if e.code == 429 and attempt < len(delays) - 1:
-                retry_delay = _retry_after_seconds(e, delay)
-                print(f"  arXiv rate limited (429), retry in {retry_delay:g}s...")
-                time.sleep(retry_delay)
-                continue
-            if attempt < len(delays) - 1:
-                time.sleep(delay)
-                continue
-        except Exception as e:
-            last_error = e
-            if attempt < len(delays) - 1:
-                time.sleep(delay)
-                continue
+    try:
+        for attempt in range(ARXIV_MAX_ATTEMPTS):
+            _remaining_time(deadline)
+            _wait_for_arxiv_slot(deadline)
+            try:
+                req = urllib.request.Request(url, headers={"User-Agent": "PaperSurveyBot/1.0"})
+                with _open_arxiv(req, timeout=min(ARXIV_REQUEST_TIMEOUT_SECONDS, _remaining_time(deadline))) as resp:
+                    xml_text = resp.read().decode("utf-8")
+                if ET.fromstring(xml_text).tag != "{http://www.w3.org/2005/Atom}feed":
+                    raise ValueError("arXiv did not return an Atom feed")
+                _remaining_time(deadline)
+            except FetchDeadlineExceeded:
+                raise
+            except urllib.error.HTTPError as e:
+                last_error = e
+                if not _is_retryable_http_status(e.code):
+                    raise RuntimeError(f"Non-retryable arXiv HTTP {e.code}: {e.reason}{_stale_cache_info(cache_path)}") from e
+                retry_delay = _retry_after_seconds(e, _retry_delay(attempt)) if e.code == 429 else _retry_delay(attempt)
+                print(f"  arXiv HTTP {e.code} (attempt {attempt + 1}/{ARXIV_MAX_ATTEMPTS}); retry in {retry_delay:g}s")
+            except (urllib.error.URLError, OSError, UnicodeError, ET.ParseError, ValueError) as e:
+                last_error = e
+                retry_delay = _retry_delay(attempt)
+                print(f"  arXiv request failed (attempt {attempt + 1}/{ARXIV_MAX_ATTEMPTS}): {type(e).__name__}: {e}; retry in {retry_delay:g}s")
+            else:
+                _write_arxiv_cache(cache_path, xml_text)
+                return xml_text
 
-    if cache_path.is_file():
-        print(f"  WARNING: arXiv unavailable after {len(delays)} attempts; using last successful cache")
-        return cache_path.read_text(encoding="utf-8")
-    raise RuntimeError(f"Failed to fetch arxiv after {len(delays)} attempts: {last_error}") from last_error
+            if attempt < ARXIV_MAX_ATTEMPTS - 1:
+                _sleep_with_deadline(retry_delay, deadline)
+    except FetchDeadlineExceeded as e:
+        if last_error is not None:
+            raise FetchDeadlineExceeded(
+                f"{e}; last arXiv error: {type(last_error).__name__}: {last_error}"
+                f"{_stale_cache_info(cache_path)}"
+            ) from last_error
+        raise
+
+    # A successful exit suppresses run_daily.sh's manager alert. Leave existing
+    # data intact and report failure when a fresh response cannot be obtained.
+    raise RuntimeError(
+        f"Failed to fetch arxiv after {ARXIV_MAX_ATTEMPTS} attempts: "
+        f"{type(last_error).__name__}: {last_error}{_stale_cache_info(cache_path)}"
+    ) from last_error
 
 
 def parse_entries(xml_text: str, cutoff_date: datetime) -> list[dict]:
@@ -327,7 +394,10 @@ def save_csv(papers: list[dict], csv_path: Path):
             writer.writerow(row)
 
 
-def fetch_topic(topic_name: str, config: dict):
+def fetch_topic(topic_name: str, config: dict, *, deadline: float | None = None):
+    if deadline is None:
+        deadline = time.monotonic() + FETCH_STAGE_TIMEOUT_SECONDS
+    _remaining_time(deadline)
     print(f"\n{'='*60}")
     print(f"Fetching: {topic_name}")
     print(f"{'='*60}")
@@ -343,14 +413,24 @@ def fetch_topic(topic_name: str, config: dict):
     for kw in config["keywords"]:
         print(f"  Searching: \"{kw}\"")
         for start in range(0, 500, 100):
-            xml = fetch_arxiv(kw, max_results=100, start=start)
+            _remaining_time(deadline)
+            xml = fetch_arxiv(kw, max_results=100, start=start, deadline=deadline)
             papers = parse_entries(xml, cutoff)
             all_papers.extend(papers)
             print(f"    Page {start//100 + 1}: {len(papers)} papers in date range")
-            if len(papers) < 100:
+            # Category filtering can remove entries from an otherwise full page.
+            entries = ET.fromstring(xml).findall("atom:entry", NS)
+            if len(entries) < 100:
                 break
-            time.sleep(3)
+            oldest = min(
+                datetime.fromisoformat(entry.find("atom:published", NS).text.strip().replace("Z", "+00:00")).replace(tzinfo=None)
+                for entry in entries
+            )
+            if oldest < cutoff:
+                break
+            _sleep_with_deadline(3, deadline)
 
+    _remaining_time(deadline)
     all_papers = deduplicate(all_papers)
     print(f"  Found {len(all_papers)} unique papers after dedup")
 
@@ -373,9 +453,12 @@ def main():
     from config import apply_proxy_env
 
     apply_proxy_env()
+    deadline = time.monotonic() + FETCH_STAGE_TIMEOUT_SECONDS
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     for topic_name, config in TOPICS.items():
-        fetch_topic(topic_name, config)
+        _remaining_time(deadline)
+        fetch_topic(topic_name, config, deadline=deadline)
+    _remaining_time(deadline)
     print("\nDone.")
 
 

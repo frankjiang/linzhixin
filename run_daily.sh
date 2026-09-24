@@ -68,7 +68,7 @@ check_storage() {
 
   if run_phase "storage_preflight" check_storage; then
     # Phase 1: Fetch new papers from arxiv
-    run_phase "fetch_papers" python3 fetch_papers.py || true
+    run_phase "fetch_papers" timeout --signal=TERM --kill-after=10s 1h python3 fetch_papers.py || true
 
   # Phase 2: Download PDFs (incremental)
   run_phase "download_pdfs" python3 download_pdfs.py || true
@@ -85,9 +85,12 @@ check_storage() {
     if bash scripts/check_codex_auth.sh; then
       if codex exec \
         --cd "$PROJECT_ROOT" \
+        --model "$PAPER_SURVEY_CODEX_MODEL" \
         --skip-git-repo-check \
         --sandbox danger-full-access \
         -c 'approval_policy="never"' \
+        -c "model_reasoning_effort=\"$PAPER_SURVEY_CODEX_REASONING_EFFORT\"" \
+        -c "service_tier=\"$PAPER_SURVEY_CODEX_SERVICE_TIER\"" \
         --color never \
         - <<PROMPT
 角色设定：你是一名理性、严谨的计算机科学家。

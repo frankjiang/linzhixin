@@ -14,6 +14,11 @@
       "/home/frank.jf/.nvm/versions/node/v18.20.8/bin"
     ]
   },
+  "codex": {
+    "model": "gpt-6-sol",
+    "reasoning_effort": "ultra",
+    "service_tier": "fast"
+  },
   "dingtalk": {
     "enabled": true,
     "webhook": "https://oapi.dingtalk.com/robot/send?access_token=YOUR_ACCESS_TOKEN",

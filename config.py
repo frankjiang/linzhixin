@@ -32,6 +32,11 @@ DEFAULT_CONFIG: dict[str, Any] = {
             "/home/frank.jf/.nvm/versions/node/v18.20.8/bin",
         ],
     },
+    "codex": {
+        "model": "gpt-6-sol",
+        "reasoning_effort": "ultra",
+        "service_tier": "fast",
+    },
     "dingtalk": {
         "enabled": False,
         "webhook": "",
@@ -168,6 +173,16 @@ def shell_exports(cfg: dict[str, Any] | None = None) -> str:
             lower = env_key.lower()
             if lower != env_key:
                 lines.append(f'export {lower}="{value}"')
+
+    codex = cfg.get("codex", {})
+    codex_mapping = {
+        "PAPER_SURVEY_CODEX_MODEL": codex.get("model", "gpt-6-sol"),
+        "PAPER_SURVEY_CODEX_REASONING_EFFORT": codex.get("reasoning_effort", "ultra"),
+        "PAPER_SURVEY_CODEX_SERVICE_TIER": codex.get("service_tier", "fast"),
+    }
+    for env_key, value in codex_mapping.items():
+        if value:
+            lines.append(f'export {env_key}="{value}"')
 
     return "\n".join(lines)
 

@@ -16,8 +16,11 @@ trap 'rm -f "$TMP_LOG"' EXIT
 
 if timeout 90 codex exec \
   --cd "$ROOT" \
+  --model "$PAPER_SURVEY_CODEX_MODEL" \
   --skip-git-repo-check \
   -c 'approval_policy="never"' \
+  -c "model_reasoning_effort=\"$PAPER_SURVEY_CODEX_REASONING_EFFORT\"" \
+  -c "service_tier=\"$PAPER_SURVEY_CODEX_SERVICE_TIER\"" \
   --color never \
   - <<< 'Reply with exactly: OK' >"$TMP_LOG" 2>&1; then
   if grep -q '^OK' "$TMP_LOG" || grep -qi 'assistant.*OK' "$TMP_LOG"; then

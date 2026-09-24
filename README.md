@@ -87,6 +87,9 @@ python3 server.py
 | `paths.home` | 运行 Codex 时使用的 HOME |
 | `paths.project_root` | 项目根目录绝对路径 |
 | `paths.codex_bin_dirs` | 追加到 PATH 的目录（含 `codex` 可执行文件） |
+| `codex.model` | 日报笔记生成使用的 Codex 模型（默认 `gpt-6-sol`） |
+| `codex.reasoning_effort` | 推理强度（默认 `ultra`） |
+| `codex.service_tier` | 服务档位（默认 `fast`） |
 | `dingtalk.enabled` | 是否启用钉钉推送 |
 | `dingtalk.webhook` | 自定义机器人 Webhook URL |
 | `dingtalk.secret` | 加签密钥（SEC 开头） |
