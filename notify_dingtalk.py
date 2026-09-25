@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Send DingTalk notifications for newly processed high-rated papers."""
+"""Send DingTalk notifications for newly processed recommended papers."""
 
 from __future__ import annotations
 
@@ -23,6 +23,16 @@ RELEVANCE_LABELS = {
     1: "Tangential",
     0: "Noise",
 }
+
+DEEP_READ_RECOMMENDATIONS = ("值得精读", "建议精读", "推荐精读")
+DEEP_READ_NEGATIONS = (
+    "不值得精读",
+    "未必值得精读",
+    "并非值得精读",
+    "不太值得精读",
+    "不建议精读",
+    "不推荐精读",
+)
 
 
 def _load_run_batch(topic: str) -> list[dict]:
@@ -76,17 +86,17 @@ def build_message(
     today = datetime.now().strftime("%Y-%m-%d")
     count = len(highlights)
     suffix = "（补发）" if catch_up else ""
-    title = f"Paper Survey · {count} 篇 {min_rating}⭐+ 论文{suffix}"
+    title = f"Paper Survey · {count} 篇值得关注论文{suffix}"
 
     if catch_up:
         header = (
             f"## 📚 World Model 日报\n\n"
-            f"**{today}** · 补发 **{count}** 篇高价值论文（创新度 ≥ {min_rating}⭐）"
+            f"**{today}** · 补发 **{count}** 篇值得关注论文（创新度 ≥ {min_rating}⭐ 或推荐精读）"
         )
     else:
         header = (
             f"## 📚 World Model 日报\n\n"
-            f"**{today}** · 本次发现 **{count}** 篇高价值论文（创新度 ≥ {min_rating}⭐）"
+            f"**{today}** · 本次发现 **{count}** 篇值得关注论文（创新度 ≥ {min_rating}⭐ 或推荐精读）"
         )
     blocks = [
         _format_paper_block(p, i, survey_url)
@@ -134,7 +144,11 @@ def _filter_highlights(
         if since_date and (paper.get("date") or "") < since_date:
             continue
         rating = int(paper.get("rating") or 0)
-        if rating >= min_rating and (paper.get("tldr") or "").strip():
+        tldr = (paper.get("tldr") or "").strip()
+        recommended = any(phrase in tldr for phrase in DEEP_READ_RECOMMENDATIONS) and not any(
+            phrase in tldr for phrase in DEEP_READ_NEGATIONS
+        )
+        if tldr and (rating >= min_rating or recommended):
             highlights.append(paper)
     highlights.sort(
         key=lambda p: (int(p.get("rating") or 0), p.get("date", "")),
@@ -219,7 +233,7 @@ def notify_highlights() -> int:
     highlights = _filter_highlights(batch_papers, min_rating)
 
     if not highlights:
-        print(f"No papers rated >={min_rating} in this batch.")
+        print(f"No papers rated >={min_rating} or recommended for deep reading in this batch.")
         _clear_run_batch(topic)
         return 0
 
@@ -240,7 +254,7 @@ def resend_since(since_date: str, *, clear_batch: bool = True) -> int:
     highlights = _filter_highlights(list(papers_map.values()), min_rating, since_date)
 
     if not highlights:
-        print(f"No papers rated >={min_rating} since {since_date}.")
+        print(f"No papers rated >={min_rating} or recommended for deep reading since {since_date}.")
         return 0
 
     print(f"Resending {len(highlights)} paper(s) since {since_date}...")
@@ -276,7 +290,7 @@ def main():
         else:
             count = notify_highlights()
         if count:
-            print(f"Notified {count} high-rated paper(s).")
+            print(f"Notified {count} recommended paper(s).")
     except Exception as exc:
         print(f"DingTalk notification failed: {exc}")
         raise SystemExit(1) from exc

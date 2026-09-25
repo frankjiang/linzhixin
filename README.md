@@ -2,7 +2,7 @@
 
 > 一位帮你读 Paper 的 Agent。
 
-林知新是一个自动化的 arXiv 论文追踪与阅读助手。它每天从 arXiv 抓取与你研究方向相关的论文，下载 PDF、提取机构信息，调用 Codex 生成中文笔记与评分，并发布为可浏览的静态页面。发现 4 星及以上高价值论文时，还会通过钉钉机器人推送摘要。
+林知新是一个自动化的 arXiv 论文追踪与阅读助手。它每天从 arXiv 抓取与你研究方向相关的论文，下载 PDF、提取机构信息，调用 Codex 生成中文笔记与评分，并发布为可浏览的静态页面。发现高创新度或值得精读的论文时，还会通过钉钉机器人推送摘要。
 
 当前追踪方向：**World Model**（视频世界模型、3D 世界模型、隐式世界模型等）。
 
@@ -17,7 +17,7 @@
 - **Agent 读论文**：Codex 阅读 PDF，生成结构化中文笔记（Insight / Method / Experiment / TL;DR 等）
 - **评分与筛选**：创新度 1–5 星、相关度 0–3 级，支持搜索与多维排序
 - **查漏补缺**：缺笔记、缺评分、缺 TL;DR 的论文会自动重新进入处理队列
-- **钉钉推送**：本次批次中 ≥4 星的论文，推送 Markdown 摘要（含「快速阅读」深链接）
+- **钉钉推送**：本次批次中创新度 ≥4 星或 TL;DR 明确建议精读的论文，推送 Markdown 摘要（含「快速阅读」深链接）
 - **管理告警**：日报运行出错时，通过 `dingtalk_manager` 机器人推送运维告警
 - **深链接**：`?paper=2606.12403v1` 可直达某篇论文并展开详情
 - **LaTeX 渲染**：标题与摘要中的 `$\\texttt{...}$`、希腊字母等由 KaTeX 渲染
@@ -93,7 +93,7 @@ python3 server.py
 | `dingtalk.enabled` | 是否启用钉钉推送 |
 | `dingtalk.webhook` | 自定义机器人 Webhook URL |
 | `dingtalk.secret` | 加签密钥（SEC 开头） |
-| `dingtalk.min_rating` | 推送最低创新度星级（默认 4） |
+| `dingtalk.min_rating` | 按创新度推送的最低星级（默认 4）；明确建议精读的论文不受此门槛限制 |
 | `dingtalk.survey_url` | 推送消息中「查看完整列表 / 快速阅读」的基础 URL |
 | `dingtalk_manager.enabled` | 是否启用管理告警机器人 |
 | `dingtalk_manager.webhook` / `secret` | 管理群机器人 Webhook 与加签密钥（与论文推送机器人分开） |
@@ -126,7 +126,7 @@ bash run_daily.sh
 | 5 | `merge_results.py` / `sync_from_notes.py` | 合并评分、从笔记回填元数据 |
 | 5c | `retire_papers.py` | 下架过期低分论文（保留笔记） |
 | 6 | `build_page.py` | 生成 `docs/index.html` |
-| 7 | `notify_dingtalk.py` | 推送本批次 ≥ `min_rating` 星论文到钉钉 |
+| 7 | `notify_dingtalk.py` | 推送本批次 ≥ `min_rating` 星或明确建议精读的论文到钉钉 |
 | 8 | git commit & push | 提交 `docs/`、`notes/` 并推送 GitHub Pages |
 | 9 | `notify_manager.py` | 若运行中有错误，向管理钉钉群发送告警汇总 |
 
@@ -142,7 +142,7 @@ python3 build_page.py
 python3 server.py
 python3 server.py -p 8080 -b 127.0.0.1
 
-# 手动钉钉推送（推送 run_batch.json 中的本批次高星论文）
+# 手动钉钉推送（推送 run_batch.json 中的本批次高星或精读推荐论文）
 python3 notify_dingtalk.py
 
 # 补发遗漏推送：指定日期以来所有符合条件论文，合并为今日日报格式
@@ -198,7 +198,7 @@ python3 sync_from_notes.py
 |------|----------|------|
 | 钉钉无推送 | `config.json` 缺失或未启用 | `cp config.example.json config.json` 并填写 `dingtalk.*` |
 | 日志出现 `DingTalk notifications disabled` | 无配置文件，使用默认关闭 | 恢复 `config.json`，`enabled: true` |
-| 网页更新但钉钉长期静默 | 同上，或本批次无 ≥4 星论文 | 查 `logs/YYYYMMDD.log`；可用 `--resend-since` 补发 |
+| 网页更新但钉钉长期静默 | 同上，或本批次无 ≥4 星且无精读推荐论文 | 查 `logs/YYYYMMDD.log`；可用 `--resend-since` 补发 |
 | GitHub Pages 未更新 | push 失败或无新 commit | 查日志 Phase 8；手动 `git push` |
 | 机构为空 | 未安装 `pdftotext` 或 PDF 未下载 | `apt install poppler-utils`；检查 `data/.../pdfs/` |
 | Codex 未运行 / 认证失败 | token 过期或 refresh 冲突 | `codex logout && codex login`；查 `scripts/check_codex_auth.sh` |
@@ -224,7 +224,7 @@ python3 sync_from_notes.py
 ├── retire_papers.py
 ├── build_page.py
 ├── dingtalk_util.py       # 钉钉机器人公共工具
-├── notify_dingtalk.py     # 高星论文推送
+├── notify_dingtalk.py     # 高星或精读推荐论文推送
 ├── notify_manager.py      # 管理告警推送
 ├── scripts/check_codex_auth.sh
 ├── server.py              # 本地 HTTP 服务
