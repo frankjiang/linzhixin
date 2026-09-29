@@ -11,11 +11,11 @@ from datetime import datetime
 from pathlib import Path
 
 from config import BASE_DIR, load_config, topic_name
-from dingtalk_util import resolve_bot_url, send_markdown
+from dingtalk_util import markdown_payload_bytes, resolve_bot_url, send_markdown
 from paper_store import load_papers
 
 DATA_DIR = BASE_DIR / "data"
-MAX_MESSAGE_CHARS = 18000
+MAX_MESSAGE_BYTES = 18000
 
 RELEVANCE_LABELS = {
     3: "Core",
@@ -157,6 +157,61 @@ def _filter_highlights(
     return highlights
 
 
+def _build_message_chunks(
+    highlights: list[dict],
+    survey_url: str,
+    min_rating: int,
+    *,
+    catch_up: bool = False,
+) -> list[tuple[list[dict], str, str]]:
+    if not highlights:
+        return []
+
+    title, body = build_message(highlights, survey_url, min_rating, catch_up=catch_up)
+    if len(markdown_payload_bytes(title, body)) <= MAX_MESSAGE_BYTES:
+        return [(highlights, title, body)]
+
+    chunks: list[list[dict]] = []
+    current: list[dict] = []
+    start_index = 1
+    for paper in highlights:
+        trial = current + [paper]
+        title, body = build_message(
+            trial, survey_url, min_rating, catch_up=catch_up, start_index=start_index
+        )
+        # The paper count is an upper bound on the number of parts, so this
+        # suffix is at least as large as the final one.
+        title += f" ({len(chunks) + 1}/{len(highlights)})"
+        if len(markdown_payload_bytes(title, body)) <= MAX_MESSAGE_BYTES:
+            current = trial
+            continue
+        if not current:
+            raise ValueError(f"Paper {paper.get('arxiv_id', '')} exceeds DingTalk message size limit")
+        chunks.append(current)
+        start_index += len(current)
+        current = [paper]
+        title, body = build_message(
+            current, survey_url, min_rating, catch_up=catch_up, start_index=start_index
+        )
+        title += f" ({len(chunks) + 1}/{len(highlights)})"
+        if len(markdown_payload_bytes(title, body)) > MAX_MESSAGE_BYTES:
+            raise ValueError(f"Paper {paper.get('arxiv_id', '')} exceeds DingTalk message size limit")
+    chunks.append(current)
+
+    messages = []
+    start_index = 1
+    for part_number, chunk in enumerate(chunks, 1):
+        title, body = build_message(
+            chunk, survey_url, min_rating, catch_up=catch_up, start_index=start_index
+        )
+        title += f" ({part_number}/{len(chunks)})"
+        if len(markdown_payload_bytes(title, body)) > MAX_MESSAGE_BYTES:
+            raise ValueError(f"DingTalk message part {part_number} exceeds size limit")
+        messages.append((chunk, title, body))
+        start_index += len(chunk)
+    return messages
+
+
 def _send_highlights(
     highlights: list[dict],
     *,
@@ -175,35 +230,12 @@ def _send_highlights(
     if not url:
         return 0
 
-    chunks: list[list[dict]] = []
-    current: list[dict] = []
-    for paper in highlights:
-        trial = current + [paper]
-        _, text = build_message(trial, survey_url, min_rating, catch_up=catch_up)
-        if current and len(text) > MAX_MESSAGE_CHARS:
-            chunks.append(current)
-            current = [paper]
-        else:
-            current = trial
-    if current:
-        chunks.append(current)
-
+    messages = _build_message_chunks(highlights, survey_url, min_rating, catch_up=catch_up)
     sent = 0
-    index = 1
-    for chunk in chunks:
-        part_suffix = f" ({index}/{len(chunks)})" if len(chunks) > 1 else ""
-        title, text = build_message(
-            chunk,
-            survey_url,
-            min_rating,
-            catch_up=catch_up,
-            start_index=index,
-        )
-        title += part_suffix
-        send_markdown(url, title, text)
+    for part_number, (chunk, title, body) in enumerate(messages, 1):
+        send_markdown(url, title, body)
         sent += len(chunk)
-        index += len(chunk)
-        if len(chunks) > 1:
+        if part_number < len(messages):
             time.sleep(1)
 
     print(f"DingTalk notification sent for {sent} paper(s).")

@@ -42,12 +42,16 @@ def build_dingtalk_url(webhook: str, secret: str) -> str:
     return urllib.parse.urlunparse(parsed._replace(query=urllib.parse.urlencode(query)))
 
 
-def send_markdown(url: str, title: str, text: str) -> dict:
+def markdown_payload_bytes(title: str, text: str) -> bytes:
     payload = {
         "msgtype": "markdown",
         "markdown": {"title": title, "text": text},
     }
-    data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    return json.dumps(payload, ensure_ascii=False).encode("utf-8")
+
+
+def send_markdown(url: str, title: str, text: str) -> dict:
+    data = markdown_payload_bytes(title, text)
     req = urllib.request.Request(
         url,
         data=data,
